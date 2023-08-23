@@ -22,29 +22,53 @@ def read_gpx(filename):
                 'time': p.time,
                 'latitude': p.latitude,
                 'longitude': p.longitude,
-                'elevation': p.elevation,
+                'elevation': p.elevation
+            })
+        waypoints = []
+        
+        for w in gpx.waypoints:
+            waypoints.append({
+                'latitude':w.latitude, 
+                'longitude':w.longitude,
+                'elevation':w.elevation, 
+                'time': w.time,
+                'name' : w.name,
+                'description' : w.description,
+                'comment' : w.comment
             })
     df = pd.DataFrame.from_records(points)
+    wdf = pd.DataFrame.from_records(waypoints)
+    
+    
+    return df, wdf 
 
-    return df 
 
-
-def resample_df(df):
+def resample_df(df, wdf):
     '''Resample initial file to 30sec segmented data'''
     
     df['date'] = pd.to_datetime(df['time'])
     df.set_index('date', inplace=True, drop=True)
+    wdf['date'] = pd.to_datetime(wdf['time'])
+    wdf.set_index('date', inplace=True, drop=True)
 
     tmp = pd.DataFrame([])
     tmp = df.copy()
 
     df.drop(['time','elevation'], axis=1, inplace=True)
 
-    df = df.resample('30S').max()
+    df = df.resample('60S').first()
     df.reset_index(inplace=True)
     df = df.dropna()
     df.rename(columns={'date':'time'}, inplace=True)
-    return df,tmp 
+
+
+    wdf.drop(['time'], axis=1, inplace=True)
+    wdf = wdf.resample('60S').first()
+    wdf.reset_index(inplace=True)
+    wdf = wdf.dropna()
+    wdf.rename(columns={'date':'time'}, inplace=True)
+    
+    return df,wdf, tmp 
 
 
 def openstreet_elevation(df):
@@ -95,9 +119,21 @@ def gpxz_elevation(df,api_key):
     return df
 
 
-def convert_df_to_gpx(df):
+def convert_df_to_gpx(df, wdf):
     '''Convert corrected data to gpx file and save locally'''
 
+    # First concatenate corrected elevation to waypoints df
+    df = df.set_index('time', drop=True)
+    wdf = wdf.set_index('time', drop=True)
+    
+    wdf.drop('elevation', axis=1, inplace=True)
+    wdf = pd.concat([wdf, df[['elevation']]], axis=1,  join='inner')
+
+    df = df.reset_index()
+    wdf = wdf.reset_index()
+    
+    
+    # Create gpx segment/waypoints and save new file locally
     gpx = gpxpy.gpx.GPX()
     gpx_track = gpxpy.gpx.GPXTrack()
     gpx.tracks.append(gpx_track)
@@ -106,8 +142,16 @@ def convert_df_to_gpx(df):
 
     for idx in df.index:
         gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(df.loc[idx, 'latitude'], df.loc[idx, 'longitude'], df.loc[idx, 'elevation']))
+    
+    if not wdf.empty:
+        for idx in wdf.index:
+            gpx.waypoints.append(gpxpy.gpx.GPXWaypoint(wdf.loc[idx, 'latitude'], wdf.loc[idx, 'longitude'],  wdf.loc[idx, 'elevation'], 
+                                wdf.loc[idx, 'time'], wdf.loc[idx, 'name'], wdf.loc[idx, 'description'], wdf.loc[idx, 'comment']))
+        
     with open('new_file.gpx', 'w') as f:
         f.write(gpx.to_xml())
+    
+    return
 
     
 def main():
@@ -124,16 +168,21 @@ def main():
     
     apikeyfile = st.file_uploader("Select the API key file:", type=["txt"])
     if apikeyfile is not None:
-        with open(apikeyfile.name, 'rt') as apkf:
+        
+        # Read apikey
+        with open('C:/Projects/GPX correction/'+apikeyfile.name, 'rt') as apkf:
             api_key = apkf.read()
 
         file = st.file_uploader("Please choose a corrupted GPX file:", type=["gpx"])
 
         if file is not None:
-            initial_name = file.name
-            df = read_gpx(file)    
 
-            [df, tmp] = resample_df(df)
+            # Read initial gpx file and resample it
+            initial_name = file.name
+            [df, wdf] = read_gpx(file)    
+            
+            [df, wdf, tmp] = resample_df(df, wdf)
+            
 
             arr = np.array(tmp['elevation'])
             ndf = pd.DataFrame([])
@@ -146,7 +195,10 @@ def main():
             plt.ylabel('Elevation')
             st.pyplot(fig)
 
+            # Apply gpx correction to original data
             df = gpxz_elevation(df,api_key)
+            
+            # This is an alternative for altitude correction using openstreetmap API
             # df = openstreet_elevation(df)
             
             # plot corrected gpx data
@@ -156,7 +208,8 @@ def main():
             plt.ylabel('Elevation')
             st.pyplot(fig)
 
-            convert_df_to_gpx(df)
+            # Convert dataframe to gpx file
+            convert_df_to_gpx(df, wdf)
 
             # prompt user to download corrected file
             with open('new_file.gpx') as f:
