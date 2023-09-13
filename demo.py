@@ -170,7 +170,7 @@ def main():
     image = Image.open('C:\Projects\GPX correction\gpxfix\kirkjufell.jpg')
     st.image(image, caption='Kirkjufell, Iceland')
     
-    # Read api key from file
+    
     api_key = config.api_key
     
 

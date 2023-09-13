@@ -1,4 +1,3 @@
-import config
 import gpxpy
 import gpxpy.gpx
 import pandas as pd
@@ -170,15 +169,12 @@ def main():
     image = Image.open('C:\Projects\GPX correction\gpxfix\kirkjufell.jpg')
     st.image(image, caption='Kirkjufell, Iceland')
     
-    # Read api key from file
-    api_key = config.api_key
-    
-    #apikeyfile = st.file_uploader("Select the API key file:", type=["txt"])
-    # if apikeyfile is not None:
-    
-    # # Read apikey
-    # with open('C:/Projects/GPX correction/'+apikeyfile.name, 'rt') as apkf:
-    #     api_key = apkf.read()
+       
+    apikeyfile = st.file_uploader("Select the API key file:", type=["txt"])
+    if apikeyfile is not None:
+        # Read apikey
+        with open('C:/Projects/GPX correction/'+apikeyfile.name, 'rt') as apkf:
+            api_key = apkf.read()
    
     file = st.file_uploader("Please choose a corrupted GPX file:", type=["gpx"])
     
